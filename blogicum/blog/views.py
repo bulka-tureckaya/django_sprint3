@@ -1,40 +1,65 @@
-import datetime
 from django.shortcuts import render, get_object_or_404
 
-from blog.models import Category, Post
+# Create your views here.
+from django.utils import timezone
 
-MAX_POST_PAGE = 5
-
-
-def base_query():
-    return Post.objects.select_related(
-        'location', 'author', 'category'
-    ).filter(
-        is_published=True,
-        category__is_published=True,
-        pub_date__lte=datetime.datetime.now())
+from blog.models import Post, Category
 
 
 def index(request):
-    post_list = base_query()[:MAX_POST_PAGE]
-    return render(request, 'blog/index.html', {'post_list': post_list})
+    template = 'blog/index.html'
+    posts = filter_query(
+        Post.objects.select_related('location', 'category', 'author')
+    )[:5]
+
+    context = {
+        'post_list': posts,
+    }
+
+    return render(request, template, context)
 
 
 def post_detail(request, post_id):
-    post = get_object_or_404(base_query(), id=post_id)
-    return render(request, 'blog/detail.html', {'post': post})
+    current_time = timezone.now()
+
+    post = get_object_or_404(
+        Post,
+        id=post_id,
+        pub_date__lte=current_time,
+        is_published=True,
+        category__is_published=True
+    )
+    template = 'blog/detail.html'
+    context = {
+        'post': post,
+    }
+    return render(request, template, context)
 
 
 def category_posts(request, category_slug):
-    category = get_object_or_404(
-        Category,
-        is_published=True,
-        slug=category_slug
+    template = 'blog/category.html'
+
+    category = get_object_or_404(Category,
+                                 slug=category_slug, is_published=True)
+
+    post_list = filter_query(
+        category.posts.select_related('location', 'category', 'author'),
+        True
     )
-    post_list = base_query().filter(
-        category=category)
-    return render(
-        request,
-        'blog/category.html',
-        {'category': category, 'post_list': post_list}
-    )
+
+    context = {
+        'category': category,
+        'post_list': post_list
+    }
+    return render(request, template, context)
+
+
+def filter_query(query_set, is_category=False):
+    current_time = timezone.now()
+    if is_category:
+        return query_set.filter(pub_date__lte=current_time,
+                                is_published=True)
+    else:
+        return query_set.filter(pub_date__lte=current_time,
+                                is_published=True,
+                                category__is_published=True)
